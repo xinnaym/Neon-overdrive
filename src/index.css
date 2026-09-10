@@ -1,0 +1,298 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --color-neon-pink: #ff2ea6;
+  --color-neon-violet: #7b2eff;
+  --color-neon-cyan: #21e6f7;
+  --color-neon-yellow: #ffd166;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #05010d;
+  color: #fff;
+  font-family: var(--font-display);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  overflow: hidden;
+}
+
+/* ---------- Текстовые градиенты ---------- */
+.title-grad {
+  background: linear-gradient(
+    90deg,
+    #ff2ea6 0%,
+    #b44bff 28%,
+    #21e6f7 55%,
+    #ffd166 80%,
+    #ff2ea6 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gradmove 7s linear infinite;
+  filter: drop-shadow(0 0 26px rgba(255, 46, 166, 0.45));
+}
+
+@keyframes gradmove {
+  to {
+    background-position: 300% 0;
+  }
+}
+
+.text-glow-pink {
+  text-shadow:
+    0 0 12px rgba(255, 46, 166, 0.9),
+    0 0 46px rgba(255, 46, 166, 0.5);
+}
+.text-glow-cyan {
+  text-shadow:
+    0 0 12px rgba(33, 230, 247, 0.9),
+    0 0 46px rgba(33, 230, 247, 0.5);
+}
+
+/* ---------- Неоновые кнопки ---------- */
+.neon-btn {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 46, 166, 0.1);
+  backdrop-filter: blur(10px);
+  transition:
+    transform 0.16s cubic-bezier(0.2, 2.2, 0.3, 1),
+    box-shadow 0.25s ease,
+    background 0.25s ease,
+    border-color 0.25s ease;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+.neon-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.22) 48%,
+    transparent 62%
+  );
+  transform: translateX(-120%);
+  animation: btnshine 3.2s ease-in-out infinite;
+}
+@keyframes btnshine {
+  0%,
+  55% {
+    transform: translateX(-120%);
+  }
+  85%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+.neon-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  border-color: rgba(255, 255, 255, 0.75);
+}
+.neon-btn:active {
+  transform: translateY(1px) scale(0.96);
+}
+.neon-btn-pink:hover {
+  box-shadow:
+    0 0 34px rgba(255, 46, 166, 0.55),
+    inset 0 0 22px rgba(255, 46, 166, 0.3);
+}
+.neon-btn-cyan {
+  background: rgba(33, 230, 247, 0.1);
+}
+.neon-btn-cyan:hover {
+  box-shadow:
+    0 0 34px rgba(33, 230, 247, 0.55),
+    inset 0 0 22px rgba(33, 230, 247, 0.3);
+}
+.neon-btn-ghost {
+  background: rgba(255, 255, 255, 0.04);
+}
+.neon-btn-ghost:hover {
+  box-shadow:
+    0 0 26px rgba(180, 75, 255, 0.5),
+    inset 0 0 18px rgba(180, 75, 255, 0.25);
+}
+
+/* ---------- Панели ---------- */
+.panel {
+  background: rgba(10, 2, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(18px);
+  box-shadow:
+    0 0 70px rgba(123, 46, 255, 0.28),
+    inset 0 0 44px rgba(123, 46, 255, 0.09);
+}
+
+/* ---------- Оверлеи поверх канваса ---------- */
+.vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 52%,
+    rgba(3, 0, 10, 0.6) 100%
+  );
+}
+.scanlines {
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.045) 0 1px,
+    transparent 1px 3px
+  );
+  mix-blend-mode: overlay;
+  animation: crtflicker 4.2s infinite;
+}
+@keyframes crtflicker {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  48% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.95;
+  }
+  52% {
+    opacity: 0.75;
+  }
+}
+
+/* ---------- Анимации появления ---------- */
+.hud-pop {
+  animation: hudpop 0.38s cubic-bezier(0.2, 2.2, 0.3, 1) both;
+}
+@keyframes hudpop {
+  from {
+    transform: scale(0.4) rotate(-6deg);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.fade-up {
+  animation: fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.banner-anim {
+  animation: bannerin 1.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes bannerin {
+  0% {
+    opacity: 0;
+    transform: translateY(26px) scale(0.65);
+    letter-spacing: 0.45em;
+  }
+  14% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    letter-spacing: 0.12em;
+  }
+  78% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px) scale(1.04);
+  }
+}
+
+.rec-pulse {
+  animation: recpulse 0.9s ease-in-out infinite alternate;
+}
+@keyframes recpulse {
+  from {
+    transform: scale(1);
+    filter: drop-shadow(0 0 8px rgba(255, 209, 102, 0.7));
+  }
+  to {
+    transform: scale(1.06);
+    filter: drop-shadow(0 0 22px rgba(255, 209, 102, 1));
+  }
+}
+
+.float-slow {
+  animation: floaty 6s ease-in-out infinite;
+}
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+/* ---------- Глитч для GAME OVER ---------- */
+.glitch {
+  position: relative;
+  animation: glitchshift 2.8s infinite steps(2, end);
+  text-shadow:
+    0 0 18px rgba(255, 46, 92, 0.85),
+    -3px 0 0 rgba(33, 230, 247, 0.65),
+    3px 0 0 rgba(255, 46, 92, 0.75);
+}
+@keyframes glitchshift {
+  0%,
+  88% {
+    transform: translate(0, 0) skewX(0);
+  }
+  90% {
+    transform: translate(-3px, 1px) skewX(-4deg);
+  }
+  92% {
+    transform: translate(3px, -2px) skewX(4deg);
+  }
+  94% {
+    transform: translate(-2px, 0);
+  }
+  96%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* ---------- Пульс подсказки ---------- */
+.hint-pulse {
+  animation: hintpulse 1.4s ease-in-out infinite;
+}
+@keyframes hintpulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
