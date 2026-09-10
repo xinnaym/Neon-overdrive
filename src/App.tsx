@@ -20,6 +20,7 @@ import {
   gameplayStop,
   initYandex,
   saveScore,
+  showInterstitial,
 } from "./game/yandex";
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
@@ -33,6 +34,7 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const ysdkRef = useRef<YandexSDK | null>(null);
+  const adShownRef = useRef(false);
 
   const [phase, setPhase] = useState<GamePhase>("menu");
   const [score, setScore] = useState(0);
@@ -94,10 +96,17 @@ export default function App() {
 
   /* ---------- Яндекс: gameplay API + лидерборды ---------- */
   useEffect(() => {
-    if (phase === "playing") gameplayStart(ysdkRef.current);
+    if (phase === "playing") {
+      gameplayStart(ysdkRef.current);
+      adShownRef.current = false;
+    }
     if (phase === "paused" || phase === "gameover") gameplayStop(ysdkRef.current);
     if (phase === "gameover" && stats) {
       void saveScore(ysdkRef.current, stats.score);
+      if (!adShownRef.current) {
+        adShownRef.current = true;
+        showInterstitial(ysdkRef.current);
+      }
     }
   }, [phase, stats]);
 

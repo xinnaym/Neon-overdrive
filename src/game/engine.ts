@@ -217,8 +217,8 @@ export class GameEngine {
     this.rings = [];
     this.particles = [];
     this.player.alive = true;
-    this.player.dir = Math.random() > 0.5 ? 1 : -1;
-    this.player.angle = -Math.PI / 2;
+    // угол и направление НЕ сбрасываем — игрок должен продолжить то же
+    // вращение, что было в меню, без скачка на верхнюю мёртвую точку.
     this.player.trail = [];
     this.shake = 0;
     this.slowmo = 0;
@@ -1060,20 +1060,26 @@ export class GameEngine {
     }
     ctx.globalAlpha = 1;
 
-    // след игрока — два штриха вместо десятков
+    // след игрока — сегменты с затуханием к хвосту
     const trail = this.player.trail;
-    if (trail.length > 2) {
-      ctx.beginPath();
-      ctx.moveTo(trail[0].x, trail[0].y);
-      for (let i = 1; i < trail.length; i++) ctx.lineTo(trail[i].x, trail[i].y);
+    const tn = trail.length;
+    if (tn > 2) {
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      ctx.strokeStyle = this.trailOuter;
-      ctx.lineWidth = 15;
-      ctx.stroke();
-      ctx.strokeStyle = this.trailInner;
-      ctx.lineWidth = 4.5;
-      ctx.stroke();
+      for (let i = 1; i < tn; i++) {
+        const k = 1 - i / tn; // 1 у головы, 0 у хвоста
+        ctx.globalAlpha = k;
+        ctx.beginPath();
+        ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
+        ctx.lineTo(trail[i].x, trail[i].y);
+        ctx.strokeStyle = this.trailOuter;
+        ctx.lineWidth = 4 + 11 * k;
+        ctx.stroke();
+        ctx.strokeStyle = this.trailInner;
+        ctx.lineWidth = 1.5 + 3 * k;
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
     }
 
     // игрок
