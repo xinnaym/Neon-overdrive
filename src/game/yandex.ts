@@ -29,26 +29,33 @@ declare global {
   }
 }
 
-function loadSdkScript(): Promise<void> {
+function waitForYaGames(timeoutMs = 8000): Promise<void> {
   return new Promise((resolve, reject) => {
     if (window.YaGames) {
       resolve();
       return;
     }
-    const script = document.createElement("script");
-    // относительный путь — для хостинга на сервере Яндекса (рекомендуемый вариант).
-    // при деплое на свой домен заменить на "https://sdk.games.s3.yandex.net/sdk.js"
-    script.src = "/sdk.js";
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Yandex SDK script failed to load"));
-    document.head.appendChild(script);
+    const start = performance.now();
+    const iv = setInterval(() => {
+      if (window.YaGames) {
+        clearInterval(iv);
+        resolve();
+      } else if (performance.now() - start > timeoutMs) {
+        clearInterval(iv);
+        reject(new Error("Yandex SDK script (/sdk.js) did not load in time"));
+      }
+    }, 50);
   });
 }
 
 export async function initYandex(): Promise<YandexSDK | null> {
   try {
-    await loadSdkScript();
+    // скрипт /sdk.js подключён статически в index.html (обязательное
+    // требование — Яндекс проксирует/подменяет этот путь только для
+    // тега, присутствующего в исходной разметке). Ждём его загрузки,
+    // т.к. атрибут async не гарантирует, что он готов раньше нашего
+    // модульного бандла.
+    await waitForYaGames();
     if (!window.YaGames) return null;
     const sdk = await window.YaGames.init();
     sdk.features?.LoadingAPI?.ready();
