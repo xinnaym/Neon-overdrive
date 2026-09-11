@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Coins,
   Flame,
   Home,
   Keyboard,
+  Lock,
   MousePointerClick,
   Pause,
   Play,
   RotateCcw,
+  ShoppingBag,
   Timer,
   Trophy,
   Volume2,
   VolumeX,
+  X,
   Zap,
 } from "lucide-react";
 import { GameEngine, GamePhase, GameStats } from "./game/engine";
 import {
+  LeaderboardRow,
   YandexPlayer,
   YandexSDK,
   gameplayStart,
@@ -24,11 +29,14 @@ import {
   initYandex,
   isPlayerAuthorized,
   loadCloudBest,
+  loadLeaderboardTop,
   saveCloudBest,
   saveScore,
   showInterstitial,
+  showRewardedVideo,
 } from "./game/yandex";
 import { Lang, fmtNum, translations } from "./i18n";
+import { COLORS, SHIPS, ShipId, ShopState, TRAILS, TrailId, isOwned, loadShop, saveShop } from "./shop";
 
 const fmtTime = (t: number) => {
   const m = Math.floor(t / 60);
@@ -59,6 +67,23 @@ export default function App() {
   const [banner, setBanner] = useState<number | null>(null);
   const [hint, setHint] = useState(false);
 
+  const [coins, setCoins] = useState(0);
+  const [shop, setShopState] = useState<ShopState>(() => loadShop());
+  const [shopOpen, setShopOpen] = useState(false);
+  const [shopTab, setShopTab] = useState<"ship" | "trail" | "color">("ship");
+  const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
+
+  const applyShop = useCallback((next: ShopState) => {
+    setShopState(next);
+    saveShop(next);
+    engineRef.current?.setCosmetics({
+      ship: next.ship,
+      trail: next.trail,
+      shipColor: next.shipColor,
+      trailColor: next.trailColor,
+    });
+  }, []);
+
   /* ---------- инициализация движка ---------- */
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -78,13 +103,26 @@ export default function App() {
         setStats(st);
         setBest(st.best);
       },
+      onCoins: setCoins,
     });
     engineRef.current = engine;
     setBest(engine.getBest());
+    setCoins(engine.getCoins());
     setMuted(engine.audio.isMuted);
+    const savedShop = loadShop();
+    engine.setCosmetics({
+      ship: savedShop.ship,
+      trail: savedShop.trail,
+      shipColor: savedShop.shipColor,
+      trailColor: savedShop.trailColor,
+    });
     initYandex().then(async (sdk) => {
       ysdkRef.current = sdk;
-      setLang(getYandexLang(sdk));
+      const l = getYandexLang(sdk);
+      setLang(l);
+      engine.setLang(l);
+
+      void loadLeaderboardTop(sdk).then(setLeaderboard);
 
       const player = await getYandexPlayer(sdk);
       playerRef.current = player;
@@ -130,7 +168,9 @@ export default function App() {
     }
     if (phase === "paused" || phase === "gameover") gameplayStop(ysdkRef.current);
     if (phase === "gameover" && stats) {
-      void saveScore(ysdkRef.current, stats.score);
+      void saveScore(ysdkRef.current, stats.score).then(() => {
+        void loadLeaderboardTop(ysdkRef.current).then(setLeaderboard);
+      });
       if (stats.isNewBest && authorizedRef.current) {
         void saveCloudBest(playerRef.current, stats.best);
       }
@@ -178,7 +218,59 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleMute]);
 
+  const shipLabel = (id: ShipId) => (id === "wing" ? t.shipWing : id === "arrow" ? t.shipArrow : t.shipClassic);
+  const trailLabel = (id: TrailId) => (id === "fade" ? t.trailFade : id === "dash" ? t.trailDash : t.trailGlow);
+
+  const selectOrBuy = (category: "ship" | "trail", id: string, price: number) => {
+    const key = `${category}:${id}`;
+    clickUi();
+    if (isOwned(shop, key)) {
+      applyShop({ ...shop, [category]: id } as ShopState);
+      return;
+    }
+    if (coins >= price && engineRef.current?.spendCoins(price)) {
+      applyShop({ ...shop, owned: [...shop.owned, key], [category]: id } as ShopState);
+    }
+  };
+
+  const unlockViaAd = (category: "ship" | "trail", id: string) => {
+    clickUi();
+    showRewardedVideo(ysdkRef.current, (rewarded) => {
+      if (!rewarded) return;
+      const key = `${category}:${id}`;
+      applyShop({ ...shop, owned: [...shop.owned, key], [category]: id } as ShopState);
+    });
+  };
+
+  const setColor = (target: "ship" | "trail", hue: number | null) => {
+    clickUi();
+    applyShop({ ...shop, [target === "ship" ? "shipColor" : "trailColor"]: hue } as ShopState);
+  };
+
   const inRun = phase === "playing" || phase === "dying" || phase === "paused";
+
+  const leaderboardPanel = (
+    <div className="fade-up panel hidden w-52 shrink-0 rounded-2xl p-4 text-left sm:block">
+      <div className="flex items-center gap-2 text-xs font-bold tracking-widest text-white/70">
+        <Trophy size={14} className="text-neon-yellow" /> {t.leaders}
+      </div>
+      {leaderboard.length === 0 ? (
+        <div className="mt-3 text-xs text-white/40">{t.leadersEmpty}</div>
+      ) : (
+        <div className="mt-3 flex flex-col gap-1.5">
+          {leaderboard.slice(0, 10).map((row) => (
+            <div key={row.rank} className="flex items-center justify-between gap-2 text-xs text-white/80">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="w-4 shrink-0 text-white/45">{row.rank}</span>
+                <span className="truncate">{row.name}</span>
+              </span>
+              <span className="shrink-0 font-bold tabular-nums text-neon-cyan">{fmt(row.score)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#05010d] font-display">
@@ -296,6 +388,10 @@ export default function App() {
             }}
           />
 
+          <div className="pointer-events-auto absolute left-4 top-1/2 z-10 -translate-y-1/2 sm:left-8">
+            {leaderboardPanel}
+          </div>
+
           <div className="float-slow relative flex flex-col items-center text-center">
             <div className="fade-up mb-3 rounded-full border border-white/10 bg-black/40 px-5 py-1.5 text-[11px] font-medium tracking-[0.5em] text-white/75 backdrop-blur-md">
               {t.menuTag}
@@ -315,12 +411,27 @@ export default function App() {
               {t.description}
             </p>
 
-            {best > 0 && (
-              <div className="fade-up mt-4 flex items-center gap-2 rounded-full border border-neon-yellow/30 bg-black/45 px-5 py-2 text-sm text-white/85 backdrop-blur-md" style={{ animationDelay: "0.22s" }}>
-                <Trophy size={16} className="text-neon-yellow" />
-                {t.bestLabel} <span className="font-bold text-neon-yellow tabular-nums">{fmt(best)}</span>
+            <div className="fade-up mt-4 flex flex-wrap items-center justify-center gap-2" style={{ animationDelay: "0.22s" }}>
+              {best > 0 && (
+                <div className="flex items-center gap-2 rounded-full border border-neon-yellow/30 bg-black/45 px-5 py-2 text-sm text-white/85 backdrop-blur-md">
+                  <Trophy size={16} className="text-neon-yellow" />
+                  {t.bestLabel} <span className="font-bold text-neon-yellow tabular-nums">{fmt(best)}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-5 py-2 text-sm text-white/85 backdrop-blur-md">
+                <Coins size={16} className="text-neon-yellow" />
+                <span className="font-bold tabular-nums">{fmt(coins)}</span>
               </div>
-            )}
+              <button
+                onClick={() => {
+                  clickUi();
+                  setShopOpen(true);
+                }}
+                className="neon-btn neon-btn-ghost flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold text-white/85"
+              >
+                <ShoppingBag size={16} /> {t.shop}
+              </button>
+            </div>
 
             <button
               onClick={() => {
@@ -378,6 +489,15 @@ export default function App() {
             <button
               onClick={() => {
                 clickUi();
+                setShopOpen(true);
+              }}
+              className="neon-btn neon-btn-ghost mt-3 flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-bold text-white/80"
+            >
+              <ShoppingBag size={18} /> {t.shop}
+            </button>
+            <button
+              onClick={() => {
+                clickUi();
                 toMenu();
               }}
               className="neon-btn neon-btn-ghost mt-3 flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-bold text-white/80"
@@ -390,7 +510,8 @@ export default function App() {
 
       {/* ============ GAME OVER ============ */}
       {phase === "gameover" && stats && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 px-4">
+        <div className="absolute inset-0 z-30 flex items-center justify-center gap-4 bg-black/40 px-4">
+          <div className="pointer-events-auto">{leaderboardPanel}</div>
           <div className="panel hud-pop flex w-full max-w-md flex-col items-center rounded-3xl p-6 text-center sm:p-9">
             <div className="glitch text-4xl font-black tracking-wider text-[#ff2e5c] sm:text-5xl">
               {t.boom}
@@ -448,6 +569,167 @@ export default function App() {
               <Home size={18} /> {t.toMenu}
             </button>
             <div className="mt-4 text-[10px] text-white/35">{t.quickRestart}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ============ МАГАЗИН ============ */}
+      {shopOpen && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="panel hud-pop flex max-h-[85vh] w-full max-w-md flex-col rounded-3xl p-5 sm:p-7">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xl font-black tracking-widest text-white">
+                <ShoppingBag size={20} /> {t.shop}
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-3 py-1 text-sm text-white/85">
+                  <Coins size={14} className="text-neon-yellow" />
+                  <span className="font-bold tabular-nums">{fmt(coins)}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    clickUi();
+                    setShopOpen(false);
+                  }}
+                  className="neon-btn neon-btn-ghost rounded-xl p-2 text-white/80"
+                  aria-label={t.close}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* вкладки */}
+            <div className="mt-4 flex gap-2">
+              {(["ship", "trail", "color"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => {
+                    clickUi();
+                    setShopTab(tab);
+                  }}
+                  className={`neon-btn flex-1 rounded-xl py-2 text-xs font-bold tracking-widest ${
+                    shopTab === tab ? "neon-btn-cyan" : "neon-btn-ghost text-white/70"
+                  }`}
+                >
+                  {tab === "ship" ? t.shopTabShip : tab === "trail" ? t.shopTabTrail : t.shopTabColor}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 overflow-y-auto pr-1">
+              {/* корабли */}
+              {shopTab === "ship" && (
+                <div className="grid grid-cols-2 gap-2.5">
+                  {SHIPS.map((item) => {
+                    const key = `ship:${item.id}`;
+                    const owned = isOwned(shop, key);
+                    const active = shop.ship === item.id;
+                    return (
+                      <div key={item.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left">
+                        <div className="text-sm font-bold text-white/90">{shipLabel(item.id)}</div>
+                        <div className="mt-1 text-[11px] text-white/45">
+                          {item.price === 0 ? "—" : `${item.price} ${t.coins.toLowerCase()}`}
+                        </div>
+                        <button
+                          onClick={() => selectOrBuy("ship", item.id, item.price)}
+                          disabled={active}
+                          className={`neon-btn mt-2 w-full rounded-lg py-1.5 text-[11px] font-bold ${
+                            active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
+                          }`}
+                        >
+                          {active ? t.equipped : owned ? t.select : `${t.buy} · ${item.price}`}
+                        </button>
+                        {!owned && coins < item.price && (
+                          <button
+                            onClick={() => unlockViaAd("ship", item.id)}
+                            className="neon-btn neon-btn-ghost mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[10px] font-bold text-white/70"
+                          >
+                            <Lock size={11} /> {t.watchAdUnlock}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* следы */}
+              {shopTab === "trail" && (
+                <div className="grid grid-cols-2 gap-2.5">
+                  {TRAILS.map((item) => {
+                    const key = `trail:${item.id}`;
+                    const owned = isOwned(shop, key);
+                    const active = shop.trail === item.id;
+                    return (
+                      <div key={item.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left">
+                        <div className="text-sm font-bold text-white/90">{trailLabel(item.id)}</div>
+                        <div className="mt-1 text-[11px] text-white/45">
+                          {item.price === 0 ? "—" : `${item.price} ${t.coins.toLowerCase()}`}
+                        </div>
+                        <button
+                          onClick={() => selectOrBuy("trail", item.id, item.price)}
+                          disabled={active}
+                          className={`neon-btn mt-2 w-full rounded-lg py-1.5 text-[11px] font-bold ${
+                            active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
+                          }`}
+                        >
+                          {active ? t.equipped : owned ? t.select : `${t.buy} · ${item.price}`}
+                        </button>
+                        {!owned && coins < item.price && (
+                          <button
+                            onClick={() => unlockViaAd("trail", item.id)}
+                            className="neon-btn neon-btn-ghost mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[10px] font-bold text-white/70"
+                          >
+                            <Lock size={11} /> {t.watchAdUnlock}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* цвета — отдельно для корабля и следа, все бесплатные */}
+              {shopTab === "color" && (
+                <div className="flex flex-col gap-5">
+                  <div>
+                    <div className="text-xs font-bold tracking-widest text-white/60">{t.shipColorLabel}</div>
+                    <div className="mt-2 flex flex-wrap gap-2.5">
+                      {COLORS.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => setColor("ship", c.hue)}
+                          aria-label={c.id}
+                          className="h-9 w-9 rounded-full border-2 transition-transform active:scale-90"
+                          style={{
+                            background: `hsl(${c.hue}, 100%, 65%)`,
+                            borderColor: shop.shipColor === c.hue ? "#fff" : "rgba(255,255,255,0.15)",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold tracking-widest text-white/60">{t.trailColorLabel}</div>
+                    <div className="mt-2 flex flex-wrap gap-2.5">
+                      {COLORS.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => setColor("trail", c.hue)}
+                          aria-label={c.id}
+                          className="h-9 w-9 rounded-full border-2 transition-transform active:scale-90"
+                          style={{
+                            background: `hsl(${c.hue}, 100%, 65%)`,
+                            borderColor: shop.trailColor === c.hue ? "#fff" : "rgba(255,255,255,0.15)",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

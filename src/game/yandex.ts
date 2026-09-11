@@ -18,6 +18,10 @@ export interface YandexSDK {
   getPlayer?: (options?: { scopes?: boolean }) => Promise<YandexPlayer>;
   getLeaderboards?: () => Promise<{
     setLeaderboardScore(name: string, score: number): Promise<unknown>;
+    getLeaderboardEntries(
+      name: string,
+      options?: { quantityTop?: number; includeUser?: boolean },
+    ): Promise<{ entries: LeaderboardEntry[] }>;
   }>;
   adv?: {
     showFullscreenAdv(params: {
@@ -28,7 +32,21 @@ export interface YandexSDK {
         onOffline?: () => void;
       };
     }): void;
+    showRewardedVideo(params: {
+      callbacks?: {
+        onOpen?: () => void;
+        onRewarded?: () => void;
+        onClose?: () => void;
+        onError?: (error: unknown) => void;
+      };
+    }): void;
   };
+}
+
+export interface LeaderboardEntry {
+  score: number;
+  rank: number;
+  player: { publicName?: string; uniqueID?: string };
 }
 
 /** Язык интерфейса из SDK. Поддерживаем ru/en, остальное — фолбэк на ru. */
@@ -169,5 +187,47 @@ export async function saveScore(sdk: YandexSDK | null, score: number) {
     await lb?.setLeaderboardScore("neonoverdrive", Math.floor(score));
   } catch {
     /* ignore */
+  }
+}
+
+/** Рекламный анлок скина в магазине. onReward(true) — только если ролик реально досмотрен. */
+export function showRewardedVideo(sdk: YandexSDK | null, onReward: (rewarded: boolean) => void) {
+  try {
+    if (!sdk?.adv?.showRewardedVideo) {
+      onReward(false);
+      return;
+    }
+    let rewarded = false;
+    sdk.adv.showRewardedVideo({
+      callbacks: {
+        onRewarded: () => {
+          rewarded = true;
+        },
+        onClose: () => onReward(rewarded),
+        onError: () => onReward(false),
+      },
+    });
+  } catch {
+    onReward(false);
+  }
+}
+
+export interface LeaderboardRow {
+  rank: number;
+  name: string;
+  score: number;
+}
+
+export async function loadLeaderboardTop(sdk: YandexSDK | null, quantityTop = 10): Promise<LeaderboardRow[]> {
+  try {
+    const lb = await sdk?.getLeaderboards?.();
+    const res = await lb?.getLeaderboardEntries("neonoverdrive", { quantityTop, includeUser: false });
+    return (res?.entries ?? []).map((e) => ({
+      rank: e.rank,
+      name: e.player?.publicName || "—",
+      score: e.score,
+    }));
+  } catch {
+    return [];
   }
 }

@@ -25,6 +25,7 @@ export interface EngineCallbacks {
   onScore: (score: number, combo: number, mult: number) => void;
   onLevel: (level: number) => void;
   onGameOver: (stats: GameStats) => void;
+  onCoins?: (total: number) => void;
 }
 
 interface Shard {
@@ -81,9 +82,28 @@ interface Star {
 
 const TAU = Math.PI * 2;
 const BEST_KEY = "neon-overdrive-best";
+const COINS_KEY = "neon-overdrive-coins";
 const SS = 3; // суперсэмплинг спрайтов
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+type EngineLang = "ru" | "en";
+const ENGINE_TEXT: Record<EngineLang, { wave: string; waveSoon: string; close: string; combo: (m: number) => string; level: (l: number) => string }> = {
+  ru: {
+    wave: "ВОЛНА!",
+    waveSoon: "ВОЛНА СЕЙЧАС!",
+    close: "БЛИЗКО!",
+    combo: (m) => `КОМБО x${m}!`,
+    level: (l) => `УРОВЕНЬ ${l}`,
+  },
+  en: {
+    wave: "WAVE!",
+    waveSoon: "WAVE INCOMING!",
+    close: "CLOSE!",
+    combo: (m) => `COMBO x${m}!`,
+    level: (l) => `LEVEL ${l}`,
+  },
+};
 
 export class GameEngine {
   audio = new AudioEngine();
@@ -104,6 +124,11 @@ export class GameEngine {
   private R = 0;
   private coreR = 0;
   private horizonY = 0;
+  /** общий коэффициент масштаба сущностей (корабль/осколки/энергия/след/попапы)
+   *  относительно "эталонного" desktop-экрана, чтобы на телефоне всё
+   *  уменьшалось согласованно, а не только солнце с ядром (которые и
+   *  так считаются от minDim). 900 — примерный minDim десктоп-окна. */
+  private scale = 1;
 
   phase: GamePhase = "menu";
 
@@ -138,6 +163,7 @@ export class GameEngine {
   private shardTimer = 1.3;
   private orbTimer = 0.8;
   private waveTimer = 16;
+  private waveWarned = false;
   private emitTimer = 0;
 
   private shake = 0;
@@ -188,6 +214,24 @@ export class GameEngine {
   /* =================== ПУБЛИЧНОЕ API =================== */
 
   private bestOverride = 0;
+  private lang: EngineLang = "ru";
+
+  setLang(l: EngineLang) {
+    this.lang = l;
+  }
+
+  private cosmetics: { ship: string; trail: string; shipColor: number | null; trailColor: number | null } = {
+    ship: "classic",
+    trail: "glow",
+    shipColor: null,
+    trailColor: null,
+  };
+
+  /** Применяет косметику из магазина (форма корабля/стиль следа/цвета). */
+  setCosmetics(c: Partial<GameEngine["cosmetics"]>) {
+    Object.assign(this.cosmetics, c);
+    this.artDirty = true;
+  }
 
   /** Подставляет рекорд, полученный из облака (берём максимум с локальным). */
   setBest(v: number) {
@@ -204,6 +248,38 @@ export class GameEngine {
     return Math.max(local, this.bestOverride);
   }
 
+  getCoins(): number {
+    try {
+      return Number(localStorage.getItem(COINS_KEY) || 0) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Списание при покупке скина в магазине. Возвращает true, если хватило средств. */
+  spendCoins(n: number): boolean {
+    const cur = this.getCoins();
+    if (cur < n) return false;
+    const next = cur - n;
+    try {
+      localStorage.setItem(COINS_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+    this.cb.onCoins?.(next);
+    return true;
+  }
+
+  private addCoins(n: number) {
+    const next = this.getCoins() + n;
+    try {
+      localStorage.setItem(COINS_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+    this.cb.onCoins?.(next);
+  }
+
   startGame() {
     this.score = 0;
     this.combo = 0;
@@ -217,9 +293,10 @@ export class GameEngine {
       this.hue = 305;
       this.artDirty = true;
     }
-    this.shardTimer = 1.3;
+    this.shardTimer = 1.0;
     this.orbTimer = 0.8;
     this.waveTimer = 16;
+    this.waveWarned = false;
     this.shards = [];
     this.orbs = [];
     this.popups = [];
@@ -384,9 +461,15 @@ export class GameEngine {
       }
       if (this.level >= 2) {
         this.waveTimer -= dw;
+        if (!this.waveWarned && this.waveTimer <= 1) {
+          this.waveWarned = true;
+          this.popup(this.cx, this.cy - this.R * 0.7, ENGINE_TEXT[this.lang].waveSoon, "#ffffff", Math.max(18, this.minDim * 0.032), 0.9);
+          this.audio.graze();
+        }
         if (this.waveTimer <= 0) {
           this.spawnWave();
-          this.waveTimer = Math.max(11, 25 - this.level * 1.4);
+          this.waveWarned = false;
+          this.waveTimer = Math.max(14, 25 - this.level * 1.2);
         }
       }
     }
@@ -418,12 +501,12 @@ export class GameEngine {
         const pdx = s.x - p.x;
         const pdy = s.y - p.y;
         const d = Math.sqrt(pdx * pdx + pdy * pdy);
-        const hitD = 25;
+        const hitD = 25 * this.scale;
         if (d < hitD) {
           this.die();
           return;
         }
-        if (!s.grazed && d < 56) {
+        if (!s.grazed && d < 56 * this.scale) {
           s.grazed = true;
           this.onGraze();
         }
@@ -441,12 +524,12 @@ export class GameEngine {
         const dx = p.x - o.x;
         const dy = p.y - o.y;
         const d = Math.sqrt(dx * dx + dy * dy) || 1;
-        if (d < 70) {
+        if (d < 70 * this.scale) {
           const pull = 340 * dw;
           o.x += (dx / d) * pull;
           o.y += (dy / d) * pull;
         }
-        if (d < 30) {
+        if (d < 30 * this.scale) {
           this.collectOrb(o);
           this.orbs.splice(i, 1);
           continue;
@@ -472,7 +555,7 @@ export class GameEngine {
   /* =================== ГЕЙМПЛЕЙ =================== */
 
   private playerSpeed() {
-    return Math.min(3.3, 2.35 + 0.06 * (this.level - 1));
+    return Math.min(3.3, 2.5 + 0.055 * (this.level - 1));
   }
 
   private syncPlayerPos() {
@@ -517,10 +600,10 @@ export class GameEngine {
   }
 
   private spawnWave() {
-    const n = Math.min(18, 8 + this.level * 2);
+    const n = Math.min(11, 5 + Math.round(this.level * 0.8));
     const gapFromPlayer = 1.0;
     const base = this.player.angle + gapFromPlayer + Math.random() * (TAU - 2 * gapFromPlayer);
-    const speed = this.minDim * (0.36 + 0.015 * this.level);
+    const speed = this.minDim * (0.28 + 0.012 * this.level);
     for (let i = 0; i < n; i++) {
       const a = base + (i / n) * TAU;
       const x = this.cx + Math.cos(a) * (this.coreR + 10);
@@ -536,7 +619,7 @@ export class GameEngine {
         outward: true,
       });
     }
-    this.popup(this.cx, this.cy - this.R * 0.5, "ВОЛНА!", this.hueStr(40, 100, 70), Math.max(26, this.minDim * 0.05), 1.1);
+    this.popup(this.cx, this.cy - this.R * 0.5, ENGINE_TEXT[this.lang].wave, this.hueStr(40, 100, 70), Math.max(26, this.minDim * 0.05), 1.1);
     this.rings.push({ r: this.coreR, vr: this.minDim * 1.4, alpha: 0.5, width: 4, color: this.hueStr(40, 100, 70) });
     this.audio.graze();
     this.shake = Math.max(this.shake, 8);
@@ -565,12 +648,13 @@ export class GameEngine {
     this.maxCombo = Math.max(this.maxCombo, this.combo);
     this.mult = Math.min(8, 1 + Math.floor(this.combo / 6));
     this.orbsN++;
+    this.addCoins(1);
     this.popup(o.x, o.y - 14, `+${pts}`, this.hueStr(160, 100, 72), 20, 0.8);
     this.burst(o.x, o.y, 16, 300, [this.hueStr(160, 100, 70), "#ffffff", this.hueStr(120, 100, 65)], 2.6, 0.5);
     this.rings.push({ r: 8, vr: 300, alpha: 0.5, width: 2.5, color: this.hueStr(160, 100, 75) });
     this.audio.pickup(this.combo);
     if (this.mult >= 4 && this.combo % 6 === 0) {
-      this.popup(this.cx, this.cy - this.R * 0.5, `КОМБО x${this.mult}!`, this.hueStr(40, 100, 68), Math.max(22, this.minDim * 0.042), 1);
+      this.popup(this.cx, this.cy - this.R * 0.5, ENGINE_TEXT[this.lang].combo(this.mult), this.hueStr(40, 100, 68), Math.max(22, this.minDim * 0.042), 1);
     }
     const newLevel = 1 + Math.floor(this.orbsN / 8);
     if (newLevel > this.level) this.levelUp(newLevel);
@@ -584,7 +668,7 @@ export class GameEngine {
     this.maxCombo = Math.max(this.maxCombo, this.combo);
     this.mult = Math.min(8, 1 + Math.floor(this.combo / 6));
     this.grazesN++;
-    this.popup(this.player.x, this.player.y - 26, "БЛИЗКО!", this.hueStr(40, 100, 72), 17, 0.7);
+    this.popup(this.player.x, this.player.y - 26, ENGINE_TEXT[this.lang].close, this.hueStr(40, 100, 72), 17 * this.scale, 0.7);
     this.burst(this.player.x, this.player.y, 6, 200, [this.hueStr(40, 100, 72)], 1.8, 0.3);
     this.audio.graze();
     this.shake = Math.max(this.shake, 6);
@@ -597,7 +681,7 @@ export class GameEngine {
     this.artDirty = true;
     this.audio.setIntensity(Math.min(5, l - 1));
     this.audio.levelUp();
-    this.popup(this.cx, this.cy - this.R * 0.5, `УРОВЕНЬ ${l}`, "#ffffff", Math.max(30, this.minDim * 0.056), 1.5);
+    this.popup(this.cx, this.cy - this.R * 0.5, ENGINE_TEXT[this.lang].level(l), "#ffffff", Math.max(30, this.minDim * 0.056), 1.5);
     this.burst(this.player.x, this.player.y, 30, 420, [this.hueStr(0, 100, 70), "#ffffff"], 3, 0.7);
     this.rings.push({ r: this.R * 0.4, vr: this.minDim, alpha: 0.6, width: 4, color: "#ffffff" });
     this.shake = Math.max(this.shake, 10);
@@ -689,6 +773,7 @@ export class GameEngine {
     this.R = this.minDim * 0.32;
     this.coreR = clamp(this.minDim * 0.05, 18, 32);
     this.horizonY = this.h * 0.6;
+    this.scale = clamp(this.minDim / 900, 0.52, 1);
 
     this.stars = [];
     const n = Math.floor((this.w * this.horizonY) / 9000);
@@ -859,12 +944,13 @@ export class GameEngine {
       c.fill();
     });
 
-    // кораблик игрока: свечение + дарт + белая обводка
-    const pc = `hsl(${(h0 + 120) % 360}, 100%, 72%)`;
+    // кораблик игрока: свечение + дарт + белая обводка (форма и цвет — из косметики)
+    const shipHue = this.cosmetics.shipColor ?? (h0 + 120) % 360;
+    const pc = `hsl(${shipHue}, 100%, 72%)`;
     this.shipSprite = this.makeSprite(112, (c, c0) => {
       c.translate(c0, c0);
       const rg = c.createRadialGradient(0, 0, 0, 0, 0, 50);
-      rg.addColorStop(0, `hsla(${(h0 + 120) % 360}, 100%, 70%, 0.55)`);
+      rg.addColorStop(0, `hsla(${shipHue}, 100%, 70%, 0.55)`);
       rg.addColorStop(1, "rgba(0,0,0,0)");
       c.fillStyle = rg;
       c.beginPath();
@@ -872,10 +958,25 @@ export class GameEngine {
       c.fill();
       c.fillStyle = pc;
       c.beginPath();
-      c.moveTo(19, 0);
-      c.lineTo(-13.5, 9.5);
-      c.lineTo(-7.5, 0);
-      c.lineTo(-13.5, -9.5);
+      if (this.cosmetics.ship === "wing") {
+        // широкий дельтаплан
+        c.moveTo(20, 0);
+        c.lineTo(-10, 14);
+        c.lineTo(-4, 0);
+        c.lineTo(-10, -14);
+      } else if (this.cosmetics.ship === "arrow") {
+        // тонкая стрела
+        c.moveTo(23, 0);
+        c.lineTo(-15, 5.5);
+        c.lineTo(-9, 0);
+        c.lineTo(-15, -5.5);
+      } else {
+        // classic
+        c.moveTo(19, 0);
+        c.lineTo(-13.5, 9.5);
+        c.lineTo(-7.5, 0);
+        c.lineTo(-13.5, -9.5);
+      }
       c.closePath();
       c.fill();
       c.strokeStyle = "#ffffff";
@@ -893,9 +994,10 @@ export class GameEngine {
     });
 
     // кеши цветов
+    const trailHue = this.cosmetics.trailColor ?? (h0 + 120) % 360;
     this.orbitCol = `hsla(${h0}, 100%, 70%, 0.28)`;
-    this.trailOuter = `hsla(${(h0 + 120) % 360}, 100%, 60%, 0.26)`;
-    this.trailInner = `hsla(${(h0 + 120) % 360}, 100%, 70%, 0.72)`;
+    this.trailOuter = `hsla(${trailHue}, 100%, 60%, 0.26)`;
+    this.trailInner = `hsla(${trailHue}, 100%, 70%, 0.72)`;
 
     // бакеты прозрачности для звёзд
     this.starCols = [];
@@ -985,13 +1087,15 @@ export class GameEngine {
     // тёмные подложки под сущностями (обычный режим)
     const halo = this.haloSprite;
     if (halo) {
+      const ps = 80 * this.scale;
       if (this.player.alive) {
-        ctx.drawImage(halo, this.player.x - 40, this.player.y - 40, 80, 80);
+        ctx.drawImage(halo, this.player.x - ps / 2, this.player.y - ps / 2, ps, ps);
       }
+      const ss = 68 * this.scale;
       for (let i = 0; i < this.shards.length; i++) {
         const s = this.shards[i];
         if (s.tele > 0) continue;
-        ctx.drawImage(halo, s.x - 34, s.y - 34, 68, 68);
+        ctx.drawImage(halo, s.x - ss / 2, s.y - ss / 2, ss, ss);
       }
     }
 
@@ -1027,7 +1131,7 @@ export class GameEngine {
     if (this.orbSprite) {
       for (const o of this.orbs) {
         const blink = o.life < 2 ? (Math.sin(o.life * 14) > 0 ? 1 : 0.25) : 1;
-        const sz = 56 * (1 + Math.sin(o.pulse) * 0.2);
+        const sz = 56 * this.scale * (1 + Math.sin(o.pulse) * 0.2);
         ctx.globalAlpha = blink;
         ctx.drawImage(this.orbSprite, o.x - sz / 2, o.y - sz / 2, sz, sz);
       }
@@ -1044,9 +1148,9 @@ export class GameEngine {
         ctx.save();
         ctx.translate(s.x, s.y);
         ctx.rotate(s.spin);
-        const sz = 11;
+        const sz = 11 * this.scale;
         ctx.strokeStyle = "#ff5a82";
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2.5 * this.scale;
         ctx.beginPath();
         ctx.moveTo(sz, 0);
         ctx.lineTo(0, sz * 0.72);
@@ -1056,38 +1160,44 @@ export class GameEngine {
         ctx.stroke();
         ctx.fillStyle = "#ff5a82";
         ctx.beginPath();
-        ctx.arc(0, 0, 3, 0, TAU);
+        ctx.arc(0, 0, 3 * this.scale, 0, TAU);
         ctx.fill();
         ctx.restore();
       } else if (shard) {
         ctx.save();
         ctx.translate(s.x, s.y);
         ctx.rotate(s.spin);
-        ctx.drawImage(shard, -32, -32, 64, 64);
+        const sz2 = 64 * this.scale;
+        ctx.drawImage(shard, -sz2 / 2, -sz2 / 2, sz2, sz2);
         ctx.restore();
       }
     }
     ctx.globalAlpha = 1;
 
-    // след игрока — сегменты с затуханием к хвосту
+    // след игрока — стиль зависит от косметики: glow / fade / dash
     const trail = this.player.trail;
     const tn = trail.length;
     if (tn > 2) {
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
+      const style = this.cosmetics.trail;
+      if (style === "dash") ctx.setLineDash([10 * this.scale, 9 * this.scale]);
       for (let i = 1; i < tn; i++) {
         const k = 1 - i / tn; // 1 у головы, 0 у хвоста
         ctx.globalAlpha = k;
         ctx.beginPath();
         ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
         ctx.lineTo(trail[i].x, trail[i].y);
-        ctx.strokeStyle = this.trailOuter;
-        ctx.lineWidth = 4 + 11 * k;
-        ctx.stroke();
+        if (style !== "fade") {
+          ctx.strokeStyle = this.trailOuter;
+          ctx.lineWidth = (4 + 11 * k) * this.scale;
+          ctx.stroke();
+        }
         ctx.strokeStyle = this.trailInner;
-        ctx.lineWidth = 1.5 + 3 * k;
+        ctx.lineWidth = (style === "fade" ? 2.5 + 4 * k : 1.5 + 3 * k) * this.scale;
         ctx.stroke();
       }
+      if (style === "dash") ctx.setLineDash([]);
       ctx.globalAlpha = 1;
     }
 
@@ -1099,14 +1209,15 @@ export class GameEngine {
       const rot = Math.atan2(hy, hx);
       // кольцо-локатор
       ctx.strokeStyle = `rgba(255,255,255,${0.4 + 0.2 * Math.sin(this.t * 6)})`;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * this.scale;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 24 + Math.sin(this.t * 6) * 3.5, 0, TAU);
+      ctx.arc(p.x, p.y, (24 + Math.sin(this.t * 6) * 3.5) * this.scale, 0, TAU);
       ctx.stroke();
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(rot);
-      ctx.drawImage(this.shipSprite, -56, -56, 112, 112);
+      const shipSz = 112 * this.scale;
+      ctx.drawImage(this.shipSprite, -shipSz / 2, -shipSz / 2, shipSz, shipSz);
       ctx.restore();
     }
 
