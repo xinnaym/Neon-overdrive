@@ -3,11 +3,19 @@
    (локальный запуск) — игра работает как обычно.
    ============================================================ */
 
+export interface YandexPlayer {
+  getMode?(): string;
+  getData(keys?: string[]): Promise<Record<string, unknown>>;
+  setData(data: Record<string, unknown>, flush?: boolean): Promise<void>;
+}
+
 export interface YandexSDK {
   features?: {
     GameplayAPI?: { start(): void; stop(): void };
     LoadingAPI?: { ready(): void };
   };
+  environment?: { i18n?: { lang?: string } };
+  getPlayer?: (options?: { scopes?: boolean }) => Promise<YandexPlayer>;
   getLeaderboards?: () => Promise<{
     setLeaderboardScore(name: string, score: number): Promise<unknown>;
   }>;
@@ -21,6 +29,53 @@ export interface YandexSDK {
       };
     }): void;
   };
+}
+
+/** Язык интерфейса из SDK. Поддерживаем ru/en, остальное — фолбэк на ru. */
+export function getYandexLang(sdk: YandexSDK | null): "ru" | "en" {
+  return sdk?.environment?.i18n?.lang === "en" ? "en" : "ru";
+}
+
+/**
+ * Игрок для облачных сохранений. scopes:false — не запрашиваем разрешение
+ * на доступ к имени/аватарке, нам нужны только данные best-score.
+ */
+export async function getYandexPlayer(sdk: YandexSDK | null): Promise<YandexPlayer | null> {
+  try {
+    const player = await sdk?.getPlayer?.({ scopes: false });
+    return player ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** "lite" — анонимный (неавторизованный) игрок, для него нет облака. */
+export function isPlayerAuthorized(player: YandexPlayer | null): boolean {
+  try {
+    return !!player && player.getMode?.() !== "lite";
+  } catch {
+    return false;
+  }
+}
+
+export async function loadCloudBest(player: YandexPlayer | null): Promise<number | null> {
+  if (!player) return null;
+  try {
+    const data = await player.getData(["best"]);
+    const v = Number(data?.best);
+    return Number.isFinite(v) ? v : 0;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveCloudBest(player: YandexPlayer | null, value: number): Promise<void> {
+  if (!player) return;
+  try {
+    await player.setData({ best: value }, true);
+  } catch {
+    /* ignore */
+  }
 }
 
 declare global {

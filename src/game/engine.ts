@@ -187,12 +187,21 @@ export class GameEngine {
 
   /* =================== ПУБЛИЧНОЕ API =================== */
 
+  private bestOverride = 0;
+
+  /** Подставляет рекорд, полученный из облака (берём максимум с локальным). */
+  setBest(v: number) {
+    if (Number.isFinite(v)) this.bestOverride = Math.max(this.bestOverride, v);
+  }
+
   getBest(): number {
+    let local = 0;
     try {
-      return Number(localStorage.getItem(BEST_KEY) || 0) || 0;
+      local = Number(localStorage.getItem(BEST_KEY) || 0) || 0;
     } catch {
-      return 0;
+      /* ignore */
     }
+    return Math.max(local, this.bestOverride);
   }
 
   startGame() {

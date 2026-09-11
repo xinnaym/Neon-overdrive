@@ -15,15 +15,21 @@ import {
 } from "lucide-react";
 import { GameEngine, GamePhase, GameStats } from "./game/engine";
 import {
+  YandexPlayer,
   YandexSDK,
   gameplayStart,
   gameplayStop,
+  getYandexLang,
+  getYandexPlayer,
   initYandex,
+  isPlayerAuthorized,
+  loadCloudBest,
+  saveCloudBest,
   saveScore,
   showInterstitial,
 } from "./game/yandex";
+import { Lang, fmtNum, translations } from "./i18n";
 
-const fmt = (n: number) => n.toLocaleString("ru-RU");
 const fmtTime = (t: number) => {
   const m = Math.floor(t / 60);
   const s = Math.floor(t % 60);
@@ -34,7 +40,13 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const ysdkRef = useRef<YandexSDK | null>(null);
+  const playerRef = useRef<YandexPlayer | null>(null);
+  const authorizedRef = useRef(false);
   const adShownRef = useRef(false);
+
+  const [lang, setLang] = useState<Lang>("ru");
+  const t = translations[lang];
+  const fmt = (n: number) => fmtNum(n, lang);
 
   const [phase, setPhase] = useState<GamePhase>("menu");
   const [score, setScore] = useState(0);
@@ -70,8 +82,24 @@ export default function App() {
     engineRef.current = engine;
     setBest(engine.getBest());
     setMuted(engine.audio.isMuted);
-    initYandex().then((sdk) => {
+    initYandex().then(async (sdk) => {
       ysdkRef.current = sdk;
+      setLang(getYandexLang(sdk));
+
+      const player = await getYandexPlayer(sdk);
+      playerRef.current = player;
+      const authorized = isPlayerAuthorized(player);
+      authorizedRef.current = authorized;
+
+      if (authorized) {
+        const cloudBest = await loadCloudBest(player);
+        const localBest = engine.getBest();
+        const merged = Math.max(cloudBest ?? 0, localBest);
+        engine.setBest(merged);
+        setBest(merged);
+        // если в облаке значение отставало от локального — подтягиваем его туда
+        if ((cloudBest ?? 0) < merged) void saveCloudBest(player, merged);
+      }
     });
     return () => engine.dispose();
   }, []);
@@ -103,6 +131,9 @@ export default function App() {
     if (phase === "paused" || phase === "gameover") gameplayStop(ysdkRef.current);
     if (phase === "gameover" && stats) {
       void saveScore(ysdkRef.current, stats.score);
+      if (stats.isNewBest && authorizedRef.current) {
+        void saveCloudBest(playerRef.current, stats.best);
+      }
       if (!adShownRef.current) {
         adShownRef.current = true;
         showInterstitial(ysdkRef.current);
@@ -173,7 +204,7 @@ export default function App() {
           {/* верхняя панель */}
           <div className="flex items-start justify-between gap-3 p-4 sm:p-6">
             <div className="fade-up">
-              <div className="text-[10px] tracking-[0.3em] text-white/50">СЧЁТ</div>
+              <div className="text-[10px] tracking-[0.3em] text-white/50">{t.score}</div>
               <div className="text-glow-pink text-3xl font-extrabold tabular-nums sm:text-4xl">
                 {fmt(score)}
               </div>
@@ -198,7 +229,7 @@ export default function App() {
                     {mult >= 3 && <Flame size={22} className={mult >= 4 ? "text-neon-yellow" : "text-neon-cyan"} />}
                     ×{mult}
                   </div>
-                  <div className="text-[10px] tracking-[0.25em] text-white/50">КОМБО {combo}</div>
+                  <div className="text-[10px] tracking-[0.25em] text-white/50">{t.combo(combo)}</div>
                 </div>
               )}
             </div>
@@ -206,7 +237,7 @@ export default function App() {
             <div className="pointer-events-auto flex flex-col items-end gap-2">
               <div className="fade-up flex items-center gap-2">
                 <div className="panel rounded-xl px-3 py-1.5 text-xs font-bold tracking-widest text-white/80">
-                  LVL {level}
+                  {t.lvl(level)}
                 </div>
                 <button
                   onClick={() => {
@@ -214,14 +245,14 @@ export default function App() {
                     phase === "playing" ? engineRef.current?.pause() : engineRef.current?.resume();
                   }}
                   className="neon-btn neon-btn-ghost rounded-xl p-2.5 text-white/85"
-                  aria-label="Пауза"
+                  aria-label={t.pause}
                 >
                   {phase === "paused" ? <Play size={18} /> : <Pause size={18} />}
                 </button>
                 <button
                   onClick={toggleMute}
                   className="neon-btn neon-btn-ghost rounded-xl p-2.5 text-white/85"
-                  aria-label="Звук"
+                  aria-label={t.sound}
                 >
                   {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                 </button>
@@ -234,7 +265,7 @@ export default function App() {
             <div className="absolute inset-x-0 bottom-10 flex justify-center px-4">
               <div className="hint-pulse flex items-center gap-3 rounded-full border border-white/15 bg-black/40 px-5 py-2.5 text-xs text-white/80 backdrop-blur-md sm:text-sm">
                 <MousePointerClick size={16} className="text-neon-cyan" />
-                ТАП или ПРОБЕЛ — сменить направление
+                {t.hint}
               </div>
             </div>
           )}
@@ -246,9 +277,9 @@ export default function App() {
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <div key={banner} className="banner-anim text-center">
             <div className="text-4xl font-black tracking-widest text-white sm:text-6xl" style={{ textShadow: "0 0 30px rgba(255,255,255,.7), 0 0 80px rgba(123,46,255,.6)" }}>
-              УРОВЕНЬ {banner}
+              {t.levelBanner(banner)}
             </div>
-            <div className="mt-2 text-sm tracking-[0.35em] text-neon-cyan text-glow-cyan">СКОРОСТЬ РАСТЁТ</div>
+            <div className="mt-2 text-sm tracking-[0.35em] text-neon-cyan text-glow-cyan">{t.speedRising}</div>
           </div>
         </div>
       )}
@@ -265,35 +296,29 @@ export default function App() {
             }}
           />
 
-          <div className="fade-up panel absolute top-6 right-6 flex items-center gap-2 rounded-2xl px-4 py-2 text-xs text-white/80 max-sm:top-4 max-sm:right-4">
-            <Zap size={14} className="text-neon-yellow" />
-            ГИПЕР-АРКАДА В ОДНУ КНОПКУ
-          </div>
-
           <div className="float-slow relative flex flex-col items-center text-center">
             <div className="fade-up mb-3 rounded-full border border-white/10 bg-black/40 px-5 py-1.5 text-[11px] font-medium tracking-[0.5em] text-white/75 backdrop-blur-md">
-              НЕОН • СКОРОСТЬ • КОМБО
+              {t.menuTag}
             </div>
             <h1
               className="fade-up title-grad text-[11.5vw] leading-[1.02] font-black tracking-tight sm:text-6xl md:text-7xl"
               style={{ animationDelay: "0.08s" }}
             >
-              НЕОНОВЫЙ
+              {t.titleLine1}
               <br />
-              ОВЕРДРАЙВ
+              {t.titleLine2}
             </h1>
             <p
               className="fade-up mt-5 max-w-md rounded-2xl border border-white/10 bg-black/45 px-6 py-3.5 text-xs leading-relaxed text-white/85 backdrop-blur-md sm:text-sm"
               style={{ animationDelay: "0.16s" }}
             >
-              Несись по орбите под синтвейв. Уворачивайся от осколков, собирай
-              энергию, разгоняй комбо до ×8 и не взорвись.
+              {t.description}
             </p>
 
             {best > 0 && (
               <div className="fade-up mt-4 flex items-center gap-2 rounded-full border border-neon-yellow/30 bg-black/45 px-5 py-2 text-sm text-white/85 backdrop-blur-md" style={{ animationDelay: "0.22s" }}>
                 <Trophy size={16} className="text-neon-yellow" />
-                РЕКОРД: <span className="font-bold text-neon-yellow tabular-nums">{fmt(best)}</span>
+                {t.bestLabel} <span className="font-bold text-neon-yellow tabular-nums">{fmt(best)}</span>
               </div>
             )}
 
@@ -304,21 +329,21 @@ export default function App() {
               className="neon-btn neon-btn-pink fade-up mt-8 rounded-2xl px-14 py-5 text-2xl font-black tracking-[0.2em] text-white sm:px-20"
               style={{ animationDelay: "0.3s" }}
             >
-              ИГРАТЬ
+              {t.play}
             </button>
 
             <div className="fade-up mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 rounded-2xl border border-white/10 bg-black/40 px-6 py-3 text-[11px] text-white/70 backdrop-blur-md" style={{ animationDelay: "0.38s" }}>
               <span className="flex items-center gap-1.5">
-                <MousePointerClick size={14} className="text-neon-pink" /> тап — разворот
+                <MousePointerClick size={14} className="text-neon-pink" /> {t.controlTap}
               </span>
               <span className="flex items-center gap-1.5">
-                <Keyboard size={14} className="text-neon-cyan" /> пробел — разворот
+                <Keyboard size={14} className="text-neon-cyan" /> {t.controlSpace}
               </span>
               <span className="flex items-center gap-1.5">
-                <RotateCcw size={14} className="text-neon-violet" /> R — рестарт
+                <RotateCcw size={14} className="text-neon-violet" /> {t.controlRestart}
               </span>
               <span className="flex items-center gap-1.5">
-                <Keyboard size={14} className="text-neon-yellow" /> M — звук
+                <Keyboard size={14} className="text-neon-yellow" /> {t.controlMute}
               </span>
             </div>
 
@@ -326,10 +351,10 @@ export default function App() {
               onClick={toggleMute}
               className="neon-btn neon-btn-ghost fade-up mt-5 flex items-center gap-2 rounded-full px-6 py-2.5 text-[12px] font-bold tracking-widest text-white/85"
               style={{ animationDelay: "0.44s" }}
-              aria-label="Звук"
+              aria-label={t.sound}
             >
               {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-              {muted ? "ЗВУК ВЫКЛЮЧЕН" : "ЗВУК ВКЛЮЧЁН"}
+              {muted ? t.soundOff : t.soundOn}
             </button>
           </div>
         </div>
@@ -339,8 +364,8 @@ export default function App() {
       {phase === "paused" && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm">
           <div className="panel hud-pop flex w-full max-w-sm flex-col items-center rounded-3xl p-8 text-center">
-            <div className="text-3xl font-black tracking-[0.25em] text-white">ПАУЗА</div>
-            <div className="mt-2 text-xs text-white/50">Орбита замерла. Бит ждёт.</div>
+            <div className="text-3xl font-black tracking-[0.25em] text-white">{t.paused}</div>
+            <div className="mt-2 text-xs text-white/50">{t.pausedHint}</div>
             <button
               onClick={() => {
                 clickUi();
@@ -348,7 +373,7 @@ export default function App() {
               }}
               className="neon-btn neon-btn-cyan mt-7 flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-4 text-lg font-bold"
             >
-              <Play size={20} /> ПРОДОЛЖИТЬ
+              <Play size={20} /> {t.resume}
             </button>
             <button
               onClick={() => {
@@ -357,7 +382,7 @@ export default function App() {
               }}
               className="neon-btn neon-btn-ghost mt-3 flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-bold text-white/80"
             >
-              <Home size={18} /> В МЕНЮ
+              <Home size={18} /> {t.toMenu}
             </button>
           </div>
         </div>
@@ -368,27 +393,27 @@ export default function App() {
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 px-4">
           <div className="panel hud-pop flex w-full max-w-md flex-col items-center rounded-3xl p-6 text-center sm:p-9">
             <div className="glitch text-4xl font-black tracking-wider text-[#ff2e5c] sm:text-5xl">
-              ВЗРЫВ!
+              {t.boom}
             </div>
-            <div className="mt-2 text-xs tracking-[0.3em] text-white/45">ОРБИТА ПОТЕРЯНА</div>
+            <div className="mt-2 text-xs tracking-[0.3em] text-white/45">{t.orbitLost}</div>
 
             {stats.isNewBest && (
               <div className="rec-pulse mt-5 flex items-center gap-2 rounded-full border border-neon-yellow/50 bg-neon-yellow/10 px-5 py-2 text-sm font-bold text-neon-yellow">
-                <Trophy size={16} /> НОВЫЙ РЕКОРД!
+                <Trophy size={16} /> {t.newBest}
               </div>
             )}
 
             <div className="mt-6 w-full">
-              <div className="text-[10px] tracking-[0.3em] text-white/45">ФИНАЛЬНЫЙ СЧЁТ</div>
+              <div className="text-[10px] tracking-[0.3em] text-white/45">{t.finalScore}</div>
               <div className="text-glow-pink text-5xl font-black tabular-nums">{fmt(stats.score)}</div>
             </div>
 
             <div className="mt-6 grid w-full grid-cols-2 gap-2.5 text-left">
               {[
-                { icon: Trophy, label: "РЕКОРД", value: fmt(stats.best), color: "text-neon-yellow" },
-                { icon: Flame, label: "МАКС КОМБО", value: `×${stats.maxCombo}`, color: "text-neon-cyan" },
-                { icon: Zap, label: "ЭНЕРГИИ", value: String(stats.orbs), color: "text-neon-cyan" },
-                { icon: Timer, label: "ВРЕМЯ", value: fmtTime(stats.time), color: "text-neon-violet" },
+                { icon: Trophy, label: t.statBest, value: fmt(stats.best), color: "text-neon-yellow" },
+                { icon: Flame, label: t.statMaxCombo, value: `×${stats.maxCombo}`, color: "text-neon-cyan" },
+                { icon: Zap, label: t.statEnergy, value: String(stats.orbs), color: "text-neon-cyan" },
+                { icon: Timer, label: t.statTime, value: fmtTime(stats.time), color: "text-neon-violet" },
               ].map(({ icon: Icon, label, value, color }) => (
                 <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                   <div className="flex items-center gap-1.5 text-[10px] tracking-widest text-white/40">
@@ -400,8 +425,8 @@ export default function App() {
             </div>
 
             <div className="mt-3 w-full rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left">
-              <div className="text-[10px] tracking-widest text-white/40">ПРОШЛЫ ВПЛОТНУЮ</div>
-              <div className="mt-1 text-lg font-bold">{stats.grazes} <span className="text-xs text-white/50">грейзов</span> · уровень {stats.level}</div>
+              <div className="text-[10px] tracking-widest text-white/40">{t.closeCalls}</div>
+              <div className="mt-1 text-lg font-bold">{t.grazes(stats.grazes, stats.level)}</div>
             </div>
 
             <button
@@ -411,7 +436,7 @@ export default function App() {
               }}
               className="neon-btn neon-btn-pink mt-7 flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-4 text-lg font-black tracking-widest"
             >
-              <RotateCcw size={20} /> ЕЩЁ РАЗ
+              <RotateCcw size={20} /> {t.tryAgain}
             </button>
             <button
               onClick={() => {
@@ -420,9 +445,9 @@ export default function App() {
               }}
               className="neon-btn neon-btn-ghost mt-3 flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-bold text-white/80"
             >
-              <Home size={18} /> В МЕНЮ
+              <Home size={18} /> {t.toMenu}
             </button>
-            <div className="mt-4 text-[10px] text-white/35">R — быстрый рестарт</div>
+            <div className="mt-4 text-[10px] text-white/35">{t.quickRestart}</div>
           </div>
         </div>
       )}
