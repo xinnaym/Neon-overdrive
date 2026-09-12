@@ -54,7 +54,7 @@ export default function App() {
   const adShownRef = useRef(false);
   const deathCountRef = useRef(0);
 
-  const [lang, setLang] = useState<Lang>("ru");
+  const [lang, setLang] = useState<Lang>("en");
   const t = translations[lang];
   const fmt = (n: number) => fmtNum(n, lang);
 
