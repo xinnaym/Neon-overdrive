@@ -130,11 +130,24 @@ export async function initYandex(): Promise<YandexSDK | null> {
     // модульного бандла.
     await waitForYaGames();
     if (!window.YaGames) return null;
-    const sdk = await window.YaGames.init();
-    sdk.features?.LoadingAPI?.ready();
-    return sdk;
+    return await window.YaGames.init();
   } catch {
     return null;
+  }
+}
+
+/**
+ * Сигнал платформе "игра готова к игре" (п.1.19 Требований платформы).
+ * Вызывать ТОЛЬКО когда интерфейс реально отрисован и доступен для
+ * взаимодействия — не сразу после готовности SDK. См. вызов в App.tsx:
+ * двойной requestAnimationFrame гарантирует, что браузер уже отрисовал
+ * кадр с меню на экране.
+ */
+export function notifyGameReady(sdk: YandexSDK | null) {
+  try {
+    sdk?.features?.LoadingAPI?.ready();
+  } catch {
+    /* ignore */
   }
 }
 

@@ -31,6 +31,7 @@ import {
   isPlayerAuthorized,
   loadCloudBest,
   loadLeaderboardTop,
+  notifyGameReady,
   saveCloudBest,
   saveScore,
   showInterstitial,
@@ -120,6 +121,16 @@ export default function App() {
     });
     initYandex().then(async (sdk) => {
       ysdkRef.current = sdk;
+
+      // GRA (п.1.19): сигналим готовность только после того, как браузер
+      // реально отрисовал кадр с интерфейсом (меню уже на экране и
+      // доступно для взаимодействия) — двойной rAF гарантирует, что
+      // как минимум один paint уже прошёл, независимо от того, когда
+      // именно ответил SDK.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => notifyGameReady(sdk));
+      });
+
       const l = getYandexLang(sdk);
       setLang(l);
       engine.setLang(l);
