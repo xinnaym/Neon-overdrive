@@ -230,7 +230,10 @@ export class GameEngine {
   /** Применяет косметику из магазина (форма корабля/стиль следа/цвета). */
   setCosmetics(c: Partial<GameEngine["cosmetics"]>) {
     Object.assign(this.cosmetics, c);
-    this.artDirty = true;
+    // запекаем сразу, а не откладываем на следующий кадр через artDirty —
+    // так выбор в магазине применяется без задержки/гонки с игровым циклом.
+    if (this.minDim > 0) this.bakeArt();
+    else this.artDirty = true;
   }
 
   /** Подставляет рекорд, полученный из облака (берём максимум с локальным). */
@@ -333,11 +336,13 @@ export class GameEngine {
   pause() {
     if (this.phase !== "playing") return;
     this.setPhase("paused");
+    this.audio.stopMusic();
   }
 
   resume() {
     if (this.phase !== "paused") return;
     this.setPhase("playing");
+    this.audio.startMusic();
   }
 
   flip() {
@@ -469,7 +474,7 @@ export class GameEngine {
         if (this.waveTimer <= 0) {
           this.spawnWave();
           this.waveWarned = false;
-          this.waveTimer = Math.max(14, 25 - this.level * 1.2);
+          this.waveTimer = Math.max(11, 21 - this.level * 1.2);
         }
       }
     }
@@ -600,7 +605,7 @@ export class GameEngine {
   }
 
   private spawnWave() {
-    const n = Math.min(11, 5 + Math.round(this.level * 0.8));
+    const n = Math.min(9, 3 + Math.round(this.level * 0.7));
     const gapFromPlayer = 1.0;
     const base = this.player.angle + gapFromPlayer + Math.random() * (TAU - 2 * gapFromPlayer);
     const speed = this.minDim * (0.28 + 0.012 * this.level);
@@ -958,14 +963,40 @@ export class GameEngine {
       c.fill();
       c.fillStyle = pc;
       c.beginPath();
-      if (this.cosmetics.ship === "wing") {
-        // широкий дельтаплан
+      const shipId = this.cosmetics.ship;
+      if (shipId === "circle") {
+        // шар
+        c.arc(0, 0, 14, 0, TAU);
+      } else if (shipId === "star") {
+        // пятиконечная звезда, одно остриё строго по ходу движения (+x)
+        const spikes = 5;
+        const outerR = 16;
+        const innerR = 6.6;
+        for (let i = 0; i < spikes * 2; i++) {
+          const rr = i % 2 === 0 ? outerR : innerR;
+          const a = (Math.PI * i) / spikes;
+          const px = Math.cos(a) * rr;
+          const py = Math.sin(a) * rr;
+          if (i === 0) c.moveTo(px, py);
+          else c.lineTo(px, py);
+        }
+      } else if (shipId === "diamond") {
+        // вытянутый ромб
+        c.moveTo(22, 0);
+        c.lineTo(0, 9);
+        c.lineTo(-14, 0);
+        c.lineTo(0, -9);
+      } else if (shipId === "smile") {
+        // смайлик
+        c.arc(0, 0, 15, 0, TAU);
+      } else if (shipId === "wing") {
+        // широкий дельтаплан (легаси)
         c.moveTo(20, 0);
         c.lineTo(-10, 14);
         c.lineTo(-4, 0);
         c.lineTo(-10, -14);
-      } else if (this.cosmetics.ship === "arrow") {
-        // тонкая стрела
+      } else if (shipId === "arrow") {
+        // тонкая стрела (легаси)
         c.moveTo(23, 0);
         c.lineTo(-15, 5.5);
         c.lineTo(-9, 0);
@@ -983,14 +1014,29 @@ export class GameEngine {
       c.lineWidth = 2.6;
       c.lineJoin = "round";
       c.stroke();
-      c.fillStyle = "#ffffff";
-      c.beginPath();
-      c.moveTo(12, 0);
-      c.lineTo(-6, 4.6);
-      c.lineTo(-3.5, 0);
-      c.lineTo(-6, -4.6);
-      c.closePath();
-      c.fill();
+      if (shipId === "smile") {
+        // лицо
+        c.fillStyle = "#0a0612";
+        c.beginPath();
+        c.arc(4.5, -5, 2.1, 0, TAU);
+        c.arc(4.5, 5, 2.1, 0, TAU);
+        c.fill();
+        c.strokeStyle = "#0a0612";
+        c.lineWidth = 2.2;
+        c.lineCap = "round";
+        c.beginPath();
+        c.arc(2, 0, 7, -0.55, 0.55);
+        c.stroke();
+      } else {
+        c.fillStyle = "#ffffff";
+        c.beginPath();
+        c.moveTo(12, 0);
+        c.lineTo(-6, 4.6);
+        c.lineTo(-3.5, 0);
+        c.lineTo(-6, -4.6);
+        c.closePath();
+        c.fill();
+      }
     });
 
     // кеши цветов
@@ -1182,22 +1228,27 @@ export class GameEngine {
       ctx.lineJoin = "round";
       const style = this.cosmetics.trail;
       if (style === "dash") ctx.setLineDash([10 * this.scale, 9 * this.scale]);
+      if (style === "dotted") ctx.setLineDash([2.5 * this.scale, 9 * this.scale]);
       for (let i = 1; i < tn; i++) {
         const k = 1 - i / tn; // 1 у головы, 0 у хвоста
         ctx.globalAlpha = k;
         ctx.beginPath();
         ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
         ctx.lineTo(trail[i].x, trail[i].y);
-        if (style !== "fade") {
+        if (style === "ribbon") {
+          ctx.strokeStyle = this.trailOuter;
+          ctx.lineWidth = (9 + 4 * k) * this.scale;
+          ctx.stroke();
+        } else if (style !== "fade") {
           ctx.strokeStyle = this.trailOuter;
           ctx.lineWidth = (4 + 11 * k) * this.scale;
           ctx.stroke();
         }
         ctx.strokeStyle = this.trailInner;
-        ctx.lineWidth = (style === "fade" ? 2.5 + 4 * k : 1.5 + 3 * k) * this.scale;
+        ctx.lineWidth = (style === "fade" ? 2.5 + 4 * k : style === "dotted" ? 5 : 1.5 + 3 * k) * this.scale;
         ctx.stroke();
       }
-      if (style === "dash") ctx.setLineDash([]);
+      if (style === "dash" || style === "dotted") ctx.setLineDash([]);
       ctx.globalAlpha = 1;
     }
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ArrowUp,
   Coins,
   Flame,
   Home,
@@ -51,6 +52,7 @@ export default function App() {
   const playerRef = useRef<YandexPlayer | null>(null);
   const authorizedRef = useRef(false);
   const adShownRef = useRef(false);
+  const deathCountRef = useRef(0);
 
   const [lang, setLang] = useState<Lang>("ru");
   const t = translations[lang];
@@ -176,7 +178,20 @@ export default function App() {
       }
       if (!adShownRef.current) {
         adShownRef.current = true;
-        showInterstitial(ysdkRef.current);
+        let n = 0;
+        try {
+          n = Number(localStorage.getItem("neon-overdrive-deaths") || 0) || 0;
+        } catch {
+          /* ignore */
+        }
+        n += 1;
+        try {
+          localStorage.setItem("neon-overdrive-deaths", String(n));
+        } catch {
+          /* ignore */
+        }
+        deathCountRef.current = n;
+        if (n % 2 === 0) showInterstitial(ysdkRef.current);
       }
     }
   }, [phase, stats]);
@@ -218,8 +233,10 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleMute]);
 
-  const shipLabel = (id: ShipId) => (id === "wing" ? t.shipWing : id === "arrow" ? t.shipArrow : t.shipClassic);
-  const trailLabel = (id: TrailId) => (id === "fade" ? t.trailFade : id === "dash" ? t.trailDash : t.trailGlow);
+  const shipLabel = (id: ShipId) =>
+    id === "circle" ? t.shipCircle : id === "star" ? t.shipStar : id === "diamond" ? t.shipDiamond : id === "smile" ? t.shipSmile : t.shipClassic;
+  const trailLabel = (id: TrailId) =>
+    id === "fade" ? t.trailFade : id === "dash" ? t.trailDash : id === "dotted" ? t.trailDotted : id === "ribbon" ? t.trailRibbon : t.trailGlow;
 
   const selectOrBuy = (category: "ship" | "trail", id: string, price: number) => {
     const key = `${category}:${id}`;
@@ -304,6 +321,10 @@ export default function App() {
                 <Trophy size={12} className="text-neon-yellow" />
                 <span className="tabular-nums">{fmt(Math.max(best, score))}</span>
               </div>
+              <div className="mt-0.5 flex items-center gap-1 text-[11px] text-white/45">
+                <Coins size={12} className="text-neon-yellow" />
+                <span className="tabular-nums">{fmt(coins)}</span>
+              </div>
             </div>
 
             {/* комбо */}
@@ -355,7 +376,7 @@ export default function App() {
           {/* подсказка */}
           {hint && phase === "playing" && (
             <div className="absolute inset-x-0 bottom-10 flex justify-center px-4">
-              <div className="hint-pulse flex items-center gap-3 rounded-full border border-white/15 bg-black/40 px-5 py-2.5 text-xs text-white/80 backdrop-blur-md sm:text-sm">
+              <div className="flex items-center gap-3 rounded-full border border-white/15 bg-black/40 px-5 py-2.5 text-xs text-white/80 backdrop-blur-md sm:text-sm">
                 <MousePointerClick size={16} className="text-neon-cyan" />
                 {t.hint}
               </div>
@@ -451,6 +472,9 @@ export default function App() {
                 <Keyboard size={14} className="text-neon-cyan" /> {t.controlSpace}
               </span>
               <span className="flex items-center gap-1.5">
+                <ArrowUp size={14} className="text-neon-cyan" /> {t.controlArrowUp}
+              </span>
+              <span className="flex items-center gap-1.5">
                 <RotateCcw size={14} className="text-neon-violet" /> {t.controlRestart}
               </span>
               <span className="flex items-center gap-1.5">
@@ -510,8 +534,10 @@ export default function App() {
 
       {/* ============ GAME OVER ============ */}
       {phase === "gameover" && stats && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center gap-4 bg-black/40 px-4">
-          <div className="pointer-events-auto">{leaderboardPanel}</div>
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 px-4">
+          <div className="pointer-events-auto absolute left-4 top-1/2 z-10 -translate-y-1/2 sm:left-8">
+            {leaderboardPanel}
+          </div>
           <div className="panel hud-pop flex w-full max-w-md flex-col items-center rounded-3xl p-6 text-center sm:p-9">
             <div className="glitch text-4xl font-black tracking-wider text-[#ff2e5c] sm:text-5xl">
               {t.boom}
@@ -568,6 +594,15 @@ export default function App() {
             >
               <Home size={18} /> {t.toMenu}
             </button>
+            <button
+              onClick={() => {
+                clickUi();
+                setShopOpen(true);
+              }}
+              className="neon-btn neon-btn-ghost mt-2 flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-bold text-white/80"
+            >
+              <ShoppingBag size={18} /> {t.shop}
+            </button>
             <div className="mt-4 text-[10px] text-white/35">{t.quickRestart}</div>
           </div>
         </div>
@@ -576,7 +611,7 @@ export default function App() {
       {/* ============ МАГАЗИН ============ */}
       {shopOpen && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-          <div className="panel hud-pop flex max-h-[85vh] w-full max-w-md flex-col rounded-3xl p-5 sm:p-7">
+          <div className="panel hud-pop flex h-[min(680px,88vh)] w-full max-w-lg flex-col rounded-3xl p-5 sm:p-7">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xl font-black tracking-widest text-white">
                 <ShoppingBag size={20} /> {t.shop}
@@ -617,37 +652,39 @@ export default function App() {
               ))}
             </div>
 
-            <div className="mt-4 overflow-y-auto pr-1">
+            <div className="mt-4 flex-1 overflow-y-auto pr-1">
               {/* корабли */}
               {shopTab === "ship" && (
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 items-stretch gap-2.5">
                   {SHIPS.map((item) => {
                     const key = `ship:${item.id}`;
                     const owned = isOwned(shop, key);
                     const active = shop.ship === item.id;
                     return (
-                      <div key={item.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left">
+                      <div key={item.id} className="flex h-full flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left">
                         <div className="text-sm font-bold text-white/90">{shipLabel(item.id)}</div>
                         <div className="mt-1 text-[11px] text-white/45">
                           {item.price === 0 ? "—" : `${item.price} ${t.coins.toLowerCase()}`}
                         </div>
-                        <button
-                          onClick={() => selectOrBuy("ship", item.id, item.price)}
-                          disabled={active}
-                          className={`neon-btn mt-2 w-full rounded-lg py-1.5 text-[11px] font-bold ${
-                            active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
-                          }`}
-                        >
-                          {active ? t.equipped : owned ? t.select : `${t.buy} · ${item.price}`}
-                        </button>
-                        {!owned && coins < item.price && (
+                        <div className="mt-auto pt-2">
                           <button
-                            onClick={() => unlockViaAd("ship", item.id)}
-                            className="neon-btn neon-btn-ghost mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[10px] font-bold text-white/70"
+                            onClick={() => selectOrBuy("ship", item.id, item.price)}
+                            disabled={active}
+                            className={`neon-btn w-full rounded-lg py-1.5 text-[11px] font-bold ${
+                              active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
+                            }`}
                           >
-                            <Lock size={11} /> {t.watchAdUnlock}
+                            {active ? t.equipped : owned ? t.select : `${t.buy} · ${item.price}`}
                           </button>
-                        )}
+                          {!owned && coins < item.price && (
+                            <button
+                              onClick={() => unlockViaAd("ship", item.id)}
+                              className="neon-btn neon-btn-ghost mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[10px] font-bold text-white/70"
+                            >
+                              <Lock size={11} /> {t.watchAdUnlock}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -656,34 +693,36 @@ export default function App() {
 
               {/* следы */}
               {shopTab === "trail" && (
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 items-stretch gap-2.5">
                   {TRAILS.map((item) => {
                     const key = `trail:${item.id}`;
                     const owned = isOwned(shop, key);
                     const active = shop.trail === item.id;
                     return (
-                      <div key={item.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left">
+                      <div key={item.id} className="flex h-full flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left">
                         <div className="text-sm font-bold text-white/90">{trailLabel(item.id)}</div>
                         <div className="mt-1 text-[11px] text-white/45">
                           {item.price === 0 ? "—" : `${item.price} ${t.coins.toLowerCase()}`}
                         </div>
-                        <button
-                          onClick={() => selectOrBuy("trail", item.id, item.price)}
-                          disabled={active}
-                          className={`neon-btn mt-2 w-full rounded-lg py-1.5 text-[11px] font-bold ${
-                            active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
-                          }`}
-                        >
-                          {active ? t.equipped : owned ? t.select : `${t.buy} · ${item.price}`}
-                        </button>
-                        {!owned && coins < item.price && (
+                        <div className="mt-auto pt-2">
                           <button
-                            onClick={() => unlockViaAd("trail", item.id)}
-                            className="neon-btn neon-btn-ghost mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[10px] font-bold text-white/70"
+                            onClick={() => selectOrBuy("trail", item.id, item.price)}
+                            disabled={active}
+                            className={`neon-btn w-full rounded-lg py-1.5 text-[11px] font-bold ${
+                              active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
+                            }`}
                           >
-                            <Lock size={11} /> {t.watchAdUnlock}
+                            {active ? t.equipped : owned ? t.select : `${t.buy} · ${item.price}`}
                           </button>
-                        )}
+                          {!owned && coins < item.price && (
+                            <button
+                              onClick={() => unlockViaAd("trail", item.id)}
+                              className="neon-btn neon-btn-ghost mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[10px] font-bold text-white/70"
+                            >
+                              <Lock size={11} /> {t.watchAdUnlock}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

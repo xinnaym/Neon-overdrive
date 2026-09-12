@@ -4,8 +4,8 @@
    движок через engine.setCosmetics(...).
    ============================================================ */
 
-export type ShipId = "classic" | "wing" | "arrow";
-export type TrailId = "glow" | "fade" | "dash";
+export type ShipId = "classic" | "circle" | "star" | "diamond" | "smile";
+export type TrailId = "glow" | "fade" | "dash" | "dotted" | "ribbon";
 
 export interface CatalogItem {
   id: string;
@@ -14,14 +14,18 @@ export interface CatalogItem {
 
 export const SHIPS: (CatalogItem & { id: ShipId })[] = [
   { id: "classic", price: 0 },
-  { id: "wing", price: 40 },
-  { id: "arrow", price: 70 },
+  { id: "circle", price: 100 },
+  { id: "star", price: 100 },
+  { id: "diamond", price: 100 },
+  { id: "smile", price: 100 },
 ];
 
 export const TRAILS: (CatalogItem & { id: TrailId })[] = [
   { id: "glow", price: 0 },
-  { id: "fade", price: 30 },
-  { id: "dash", price: 50 },
+  { id: "fade", price: 100 },
+  { id: "dash", price: 100 },
+  { id: "dotted", price: 100 },
+  { id: "ribbon", price: 100 },
 ];
 
 // бесплатная палитра — можно назначать отдельно кораблю и следу
@@ -34,6 +38,10 @@ export const COLORS: { id: string; hue: number }[] = [
   { id: "orange", hue: 24 },
   { id: "blue", hue: 215 },
   { id: "red", hue: 355 },
+  { id: "mint", hue: 165 },
+  { id: "lime", hue: 90 },
+  { id: "magenta", hue: 300 },
+  { id: "gold", hue: 40 },
 ];
 
 export interface ShopState {

@@ -184,7 +184,7 @@ export function showInterstitial(
 export async function saveScore(sdk: YandexSDK | null, score: number) {
   try {
     const lb = await sdk?.getLeaderboards?.();
-    await lb?.setLeaderboardScore("neonoverdrive", Math.floor(score));
+    await lb?.setLeaderboardScore("leaderbordScore", Math.floor(score));
   } catch {
     /* ignore */
   }
@@ -221,7 +221,7 @@ export interface LeaderboardRow {
 export async function loadLeaderboardTop(sdk: YandexSDK | null, quantityTop = 10): Promise<LeaderboardRow[]> {
   try {
     const lb = await sdk?.getLeaderboards?.();
-    const res = await lb?.getLeaderboardEntries("neonoverdrive", { quantityTop, includeUser: false });
+    const res = await lb?.getLeaderboardEntries("leaderbordScore", { quantityTop, includeUser: false });
     return (res?.entries ?? []).map((e) => ({
       rank: e.rank,
       name: e.player?.publicName || "—",
