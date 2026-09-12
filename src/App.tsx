@@ -196,6 +196,13 @@ export default function App() {
     }
   }, [phase, stats]);
 
+  /* ---------- Блокировка контекстного меню браузера ---------- */
+  useEffect(() => {
+    const block = (e: Event) => e.preventDefault();
+    document.addEventListener("contextmenu", block);
+    return () => document.removeEventListener("contextmenu", block);
+  }, []);
+
   /* ---------- действия ---------- */
   const play = useCallback(() => engineRef.current?.startGame(), []);
   const resume = useCallback(() => engineRef.current?.resume(), []);
@@ -332,9 +339,8 @@ export default function App() {
               {combo >= 2 && (
                 <div key={combo} className="hud-pop flex flex-col items-center">
                   <div
-                    className={`flex items-center gap-1.5 text-2xl font-black sm:text-3xl ${
-                      mult >= 4 ? "text-neon-yellow" : "text-neon-cyan"
-                    }`}
+                    className={`flex items-center gap-1.5 text-2xl font-black sm:text-3xl ${mult >= 4 ? "text-neon-yellow" : "text-neon-cyan"
+                      }`}
                     style={{
                       textShadow: `0 0 18px ${mult >= 4 ? "rgba(255,209,102,.8)" : "rgba(33,230,247,.8)"}`,
                     }}
@@ -643,9 +649,8 @@ export default function App() {
                     clickUi();
                     setShopTab(tab);
                   }}
-                  className={`neon-btn flex-1 rounded-xl py-2 text-xs font-bold tracking-widest ${
-                    shopTab === tab ? "neon-btn-cyan" : "neon-btn-ghost text-white/70"
-                  }`}
+                  className={`neon-btn flex-1 rounded-xl py-2 text-xs font-bold tracking-widest ${shopTab === tab ? "neon-btn-cyan" : "neon-btn-ghost text-white/70"
+                    }`}
                 >
                   {tab === "ship" ? t.shopTabShip : tab === "trail" ? t.shopTabTrail : t.shopTabColor}
                 </button>
@@ -670,9 +675,8 @@ export default function App() {
                           <button
                             onClick={() => selectOrBuy("ship", item.id, item.price)}
                             disabled={active}
-                            className={`neon-btn w-full rounded-lg py-1.5 text-[11px] font-bold ${
-                              active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
-                            }`}
+                            className={`neon-btn w-full rounded-lg py-1.5 text-[11px] font-bold ${active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
+                              }`}
                           >
                             {active ? t.equipped : owned ? t.select : `${t.buy} · ${item.price}`}
                           </button>
@@ -708,9 +712,8 @@ export default function App() {
                           <button
                             onClick={() => selectOrBuy("trail", item.id, item.price)}
                             disabled={active}
-                            className={`neon-btn w-full rounded-lg py-1.5 text-[11px] font-bold ${
-                              active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
-                            }`}
+                            className={`neon-btn w-full rounded-lg py-1.5 text-[11px] font-bold ${active ? "neon-btn-cyan" : owned ? "neon-btn-ghost" : "neon-btn-pink"
+                              }`}
                           >
                             {active ? t.equipped : owned ? t.select : `${t.buy} · ${item.price}`}
                           </button>

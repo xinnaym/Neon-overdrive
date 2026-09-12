@@ -14,6 +14,13 @@ body,
   height: 100%;
 }
 
+canvas {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
 body {
   background: #05010d;
   color: #fff;
