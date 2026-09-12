@@ -54,7 +54,7 @@ export default function App() {
   const adShownRef = useRef(false);
   const deathCountRef = useRef(0);
 
-  const [lang, setLang] = useState<Lang>("en");
+  const [lang, setLang] = useState<Lang>("ru");
   const t = translations[lang];
   const fmt = (n: number) => fmtNum(n, lang);
 
@@ -170,7 +170,7 @@ export default function App() {
     }
     if (phase === "paused" || phase === "gameover") gameplayStop(ysdkRef.current);
     if (phase === "gameover" && stats) {
-      void saveScore(ysdkRef.current, stats.score).then(() => {
+      void saveScore(ysdkRef.current, stats.best).then(() => {
         void loadLeaderboardTop(ysdkRef.current).then(setLeaderboard);
       });
       if (stats.isNewBest && authorizedRef.current) {

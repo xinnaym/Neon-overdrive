@@ -91,11 +91,11 @@ export class AudioEngine {
     comp.connect(ctx.destination);
 
     this.musicBus = ctx.createGain();
-    this.musicBus.gain.value = 0.28;
+    this.musicBus.gain.value = 0.04;
     this.musicBus.connect(this.master);
 
     this.sfxBus = ctx.createGain();
-    this.sfxBus.gain.value = 0.95;
+    this.sfxBus.gain.value = 0.08;
     this.sfxBus.connect(this.master);
 
     // Эхо для арпеджио
